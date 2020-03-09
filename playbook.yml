@@ -1,0 +1,67 @@
+---
+- hosts: all
+  become: yes
+
+  tasks:
+  - name: update & upgrade
+    apt: force_apt_get=yes update_cache=yes cache_valid_time=3600 upgrade=dist
+  - name: check if we need to reboot
+    register: reboot_required
+    stat: path=/var/run/reboot-required get_md5=no
+  - name: Reboot server if needed
+    reboot:
+      msg: "Rebooting server from ansible"
+      connect_timeout: 5
+      reboot_timeout: 300
+      pre_reboot_delay: 0
+      post_reboot_delay: 30
+      test_command: uptime
+    when: reboot_required.stat.exists
+
+- hosts: frontend
+  become: yes
+  tasks:
+  - name: add opennebula signing key
+    apt_key:
+      url: https://downloads.opennebula.org/repo/repo.key
+      state: present
+  - name: add opennebula repo
+    apt_repository:
+      repo: deb https://downloads.opennebula.org/repo/5.10/Ubuntu/18.04 stable opennebula
+      state: present
+  - name: install opennebula on frontend
+    package:
+      name:
+        - opennebula
+        - opennebula-sunstone
+        - opennebula-gate
+        - opennebula-flow
+      state: present 
+  - name: start opennebula services
+    service:
+      name: "{{ item }}"
+      state: started
+    loop:
+      - opennebula
+      - opennebula-sunstone
+
+- hosts: compute
+  become: yes
+  tasks:
+  - name: add opennebula signing key
+    apt_key:
+      url: https://downloads.opennebula.org/repo/repo.key
+      state: present
+  - name: add opennebula repo
+    apt_repository:
+      repo: deb https://downloads.opennebula.org/repo/5.10/Ubuntu/18.04 stable opennebula
+      state: present
+  - name: install opennebula-node packages
+    package:
+      name:
+        - opennebula-node
+      state: present
+  - name: restart libvirt
+    service:
+      name: libvirt-bin
+      state: restarted
